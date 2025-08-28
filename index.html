@@ -16,6 +16,11 @@
   .genuine{background:#e0f8e9; border:1px solid #4CAF50;}
   .fake{background:#f8e0e0; border:1px solid #f44336;}
 </style>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js"></script>
+
 </head>
 <body>
 <div class="container">
@@ -34,18 +39,26 @@
 </div>
 
 <script>
-// Mock database
-const mockDB = [
-  { code:'PROD-ALPHA-2025-B01', name:'GenuinePainAway 250mg' },
-  { code:'PROD-BETA-2024-B12', name:'PureSkin Cream 50g' },
-  { code:'PROD-GAMMA-2025-B05', name:'VoltCharge Powerbank' }
-];
+// Firebase config — replace with your project's keys
+const firebaseConfig = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+// Initialize Firebase
+const app = firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
 
 const resultBox = document.getElementById('result');
 const video = document.getElementById('video');
 let stream=null, scanning=false;
 let detector=null;
 
+// Start camera scan
 async function startCamera(){
   try{
     stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
@@ -61,11 +74,13 @@ async function startCamera(){
   } catch(e){ resultBox.textContent = "Camera start failed: "+e.message; }
 }
 
+// Stop camera
 function stopCamera(){
   scanning=false;
   if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
 }
 
+// Camera scanning loop
 async function scanLoop(){
   if(!scanning || !detector) return;
   try{
@@ -73,28 +88,39 @@ async function scanLoop(){
     const detections = await detector.detect(bitmap);
     if(detections.length>0){
       const code = detections[0].rawValue;
-      manualVerify(code);
+      verifyCode(code);
       stopCamera();
     }
-  }catch(e){/* ignore */}
+  }catch(e){/* ignore */ }
   if(scanning) requestAnimationFrame(scanLoop);
 }
 
-function manualVerify(code){
-  const found = mockDB.find(item=>item.code===code);
-  if(found){
-    resultBox.className='result genuine';
-    resultBox.textContent = `Genuine Product: ${found.name}`;
-  } else {
+// Verify code against Firebase Firestore
+async function verifyCode(code){
+  if(!code) return;
+  try{
+    const querySnapshot = await db.collection("products")
+                                  .where("code", "==", code)
+                                  .get();
+    if(!querySnapshot.empty){
+      const product = querySnapshot.docs[0].data();
+      resultBox.className='result genuine';
+      resultBox.textContent = `Genuine Product: ${product.name}`;
+    } else {
+      resultBox.className='result fake';
+      resultBox.textContent = 'Possible counterfeit or invalid code.';
+    }
+  } catch (err){
     resultBox.className='result fake';
-    resultBox.textContent = 'Possible counterfeit or invalid code.';
+    resultBox.textContent = 'Error connecting to database.';
+    console.error(err);
   }
 }
 
 // Event listeners
 document.getElementById('startCam').addEventListener('click', startCamera);
 document.getElementById('stopCam').addEventListener('click', stopCamera);
-document.getElementById('verifyBtn').addEventListener('click', ()=>manualVerify(document.getElementById('manualInput').value.trim()));
+document.getElementById('verifyBtn').addEventListener('click', ()=>verifyCode(document.getElementById('manualInput').value.trim()));
 
 </script>
 </body>
